@@ -1,13 +1,13 @@
 import { Audio } from 'expo-av';
 
-// Voice detection configuration
-const TARGET_KEYWORDS = ['help me', 'help'];
-const HINDI_KEYWORDS = ['bachao', 'bacho'];
-const REQUIRED_DETECTIONS = 2; // Must detect keyword 2 times
+// Voice detection configuration - VERY STRICT
+const REQUIRED_DETECTIONS = 2; // Must detect 2 times
 const DETECTION_WINDOW = 10000; // Within 10 seconds
-const SCREAM_AMPLITUDE_THRESHOLD = 0.75;
-const HIGH_AMPLITUDE_THRESHOLD = 0.70; // For sustained loud sounds
-const KEYWORD_CONFIDENCE = 0.90; // Simulated confidence for testing
+const SCREAM_AMPLITUDE_THRESHOLD = 0.85; // Very high - only extreme screams
+const HELP_ME_AMPLITUDE_THRESHOLD = 0.80; // Very loud sustained voice only
+const HELP_ME_DURATION_MIN = 800; // Must sustain for at least 800ms (saying "help me")
+const HELP_ME_DURATION_MAX = 2000; // But not more than 2 seconds
+const CONSECUTIVE_SAMPLES_REQUIRED = 8; // Need 8 consecutive high samples (800ms)
 
 interface VoiceDetectionResult {
   detected: boolean;
@@ -29,10 +29,12 @@ export class VoiceDetector {
   private onDetection: ((result: VoiceDetectionResult) => void) | null = null;
   private audioBuffer: number[] = [];
   private lastCheckTime = 0;
-  private checkInterval = 500; // Check every 500ms
+  private checkInterval = 500;
   private keywordDetections: KeywordDetection[] = [];
   private loudVoiceStartTime = 0;
   private consecutiveHighAmplitude = 0;
+  private lastDetectionTime = 0;
+  private detectionCooldown = 3000; // 3 second cooldown between detections
 
   async start(callback: (result: VoiceDetectionResult) => void): Promise<boolean> {
     try {
