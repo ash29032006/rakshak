@@ -94,6 +94,11 @@ export class GestureDetector {
   private async detectCameraCover(brightness: number, now: number) {
     const avgBrightness = this.brightnessBuffer.reduce((a, b) => a + b, 0) / this.brightnessBuffer.length;
     
+    // Cooldown check
+    if (now - this.lastGestureTime < COOLDOWN_AFTER_DETECTION) {
+      return;
+    }
+    
     // Camera is covered if brightness is very low
     if (avgBrightness < 0.15) {
       if (this.coverStartTime === 0) {
@@ -103,31 +108,22 @@ export class GestureDetector {
         const coverDuration = now - this.coverStartTime;
         
         if (coverDuration >= 2000) {
-          // Covered for 2+ seconds - trigger!
-          this.onDetection?.({
-            detected: true,
-            gesture: 'cover',
-            confidence: 0.90,
-          });
-          
-          console.log('🚨 CAMERA COVER GESTURE DETECTED');
-          this.coverStartTime = 0; // Reset
-          
-          // Cooldown
-          setTimeout(() => {
-            this.gestureState = 'waiting';
-          }, 3000);
+          // Covered for 2+ seconds - record detection!
+          this.recordGestureDetection('cover', 0.90, now);
+          this.coverStartTime = 0;
         }
       }
     } else {
-      this.coverStartTime = 0; // Reset if brightness increases
+      this.coverStartTime = 0;
     }
   }
 
   private async detectHelpGesture(frameData: any, now: number) {
-    // State machine: waiting → palm_detected → fist → trigger
+    // Cooldown check
+    if (now - this.lastGestureTime < COOLDOWN_AFTER_DETECTION) {
+      return;
+    }
     
-    // Simulate hand detection
     const handDetected = Math.random() > 0.7;
     const isPalmOpen = Math.random() > 0.5;
     
@@ -139,31 +135,23 @@ export class GestureDetector {
       const elapsed = now - this.palmDetectedTime;
       
       if (elapsed > 2000) {
-        // Timeout - reset
         this.gestureState = 'waiting';
         console.log('⏱️ Palm gesture timeout');
       } else if (handDetected && !isPalmOpen) {
-        // Fist detected within time window!
-        this.onDetection?.({
-          detected: true,
-          gesture: 'help',
-          confidence: 0.95,
-        });
-        
-        console.log('🚨 HELP GESTURE DETECTED (Palm → Fist)');
+        // Fist detected - record!
+        this.recordGestureDetection('help', 0.95, now);
         this.gestureState = 'waiting';
-        
-        // Cooldown
-        setTimeout(() => {
-          this.gestureState = 'waiting';
-        }, 3000);
       }
     }
   }
 
   private async detectWave(frameData: any, now: number) {
-    // Track hand position changes
-    const handX = Math.random() * 100; // Simulate X position
+    // Cooldown check
+    if (now - this.lastGestureTime < COOLDOWN_AFTER_DETECTION) {
+      return;
+    }
+    
+    const handX = Math.random() * 100;
     
     if (this.gestureState === 'tracking_wave' || this.waveStartTime === 0) {
       if (this.waveStartTime === 0) {
@@ -172,9 +160,8 @@ export class GestureDetector {
         this.motionVector = { x: handX, y: 0, count: 0 };
       }
       
-      // Detect direction reversal
       const deltaX = handX - this.motionVector.x;
-      if (Math.abs(deltaX) > 15) { // Significant movement
+      if (Math.abs(deltaX) > 15) {
         this.waveCount++;
         this.motionVector.x = handX;
         console.log(`👋 Wave count: ${this.waveCount}`);
@@ -184,26 +171,52 @@ export class GestureDetector {
       
       if (elapsed > 1000) {
         if (this.waveCount >= 4) {
-          // 4+ waves in 1 second!
-          this.onDetection?.({
-            detected: true,
-            gesture: 'wave',
-            confidence: 0.85,
-          });
-          
-          console.log('🚨 WAVE GESTURE DETECTED');
+          // 4+ waves detected - record!
+          this.recordGestureDetection('wave', 0.85, now);
         }
         
-        // Reset wave tracking
         this.waveStartTime = 0;
         this.waveCount = 0;
-        
-        // Cooldown
-        setTimeout(() => {
-          this.gestureState = 'waiting';
-        }, 3000);
       }
     }
+  }
+
+  // Record gesture detection and check if we have enough
+  private recordGestureDetection(gesture: 'help' | 'wave' | 'cover', confidence: number, now: number) {
+    // Add detection
+    this.gestureDetections.push({
+      gesture,
+      timestamp: now,
+      confidence,
+    });
+
+    // Remove old detections
+    this.gestureDetections = this.gestureDetections.filter(
+      (d) => now - d.timestamp <= DETECTION_WINDOW
+    );
+
+    console.log(`👋 Gesture "${gesture}" detected! Count: ${this.gestureDetections.length}/${REQUIRED_DETECTIONS}`);
+
+    // Check if we have enough
+    if (this.gestureDetections.length >= REQUIRED_DETECTIONS) {
+      const avgConfidence = 
+        this.gestureDetections.reduce((sum, d) => sum + d.confidence, 0) / 
+        this.gestureDetections.length;
+
+      this.onDetection?.({
+        detected: true,
+        gesture,
+        confidence: avgConfidence,
+        detectionCount: this.gestureDetections.length,
+      });
+
+      console.log(`🚨 GESTURE ALERT: "${gesture}" detected ${this.gestureDetections.length} times!`);
+      
+      // Reset
+      this.gestureDetections = [];
+    }
+    
+    this.lastGestureTime = now;
   }
 
   // Manual trigger for testing
