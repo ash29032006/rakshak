@@ -36,10 +36,6 @@ export class VoiceDetector {
 
   async start(callback: (result: VoiceDetectionResult) => void): Promise<boolean> {
     try {
-      // Check if speech recognition is supported
-      const result = await ExpoSpeechRecognitionModule.getStateAsync();
-      this.recognitionSupported = result.available;
-
       // Request permissions
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== 'granted') {
@@ -56,148 +52,16 @@ export class VoiceDetector {
       this.onDetection = callback;
       this.isListening = true;
       this.keywordDetections = [];
+      this.consecutiveHighAmplitude = 0;
       
-      // Start speech recognition if supported
-      if (this.recognitionSupported) {
-        await this.startSpeechRecognition();
-      }
-      
-      // Start audio amplitude monitoring (for scream detection)
+      // Start audio amplitude monitoring
       await this.startRecording();
       
-      console.log('✅ Voice detection started (Speech Recognition:', this.recognitionSupported, ')');
+      console.log('✅ Voice detection started (Audio amplitude monitoring)');
       return true;
     } catch (error) {
       console.error('Failed to start voice detection:', error);
       return false;
-    }
-  }
-
-  private async startSpeechRecognition() {
-    try {
-      const { status } = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.warn('Speech recognition permission not granted');
-        return;
-      }
-
-      // Start continuous speech recognition
-      await ExpoSpeechRecognitionModule.start({
-        lang: 'en-US',
-        interimResults: true,
-        maxAlternatives: 1,
-        continuous: true,
-        requiresOnDeviceRecognition: false,
-        addsPunctuation: false,
-        contextualStrings: TARGET_KEYWORDS,
-      });
-
-      this.isRecognizing = true;
-
-      // Listen for speech recognition results
-      ExpoSpeechRecognitionModule.addListener('result', (event: any) => {
-        this.handleSpeechResult(event);
-      });
-
-      ExpoSpeechRecognitionModule.addListener('error', (event: any) => {
-        console.error('Speech recognition error:', event);
-        if (event.error !== SpeechRecognitionErrorCode.NoMatch) {
-          // Restart recognition on error (except no match)
-          setTimeout(() => {
-            if (this.isListening) {
-              this.startSpeechRecognition();
-            }
-          }, 1000);
-        }
-      });
-
-      ExpoSpeechRecognitionModule.addListener('end', () => {
-        // Restart continuous recognition
-        if (this.isListening) {
-          setTimeout(() => {
-            this.startSpeechRecognition();
-          }, 500);
-        }
-      });
-
-    } catch (error) {
-      console.error('Speech recognition failed:', error);
-      this.recognitionSupported = false;
-    }
-  }
-
-  private handleSpeechResult(event: any) {
-    if (!event.results || event.results.length === 0) return;
-
-    const result = event.results[0];
-    if (!result.transcripts || result.transcripts.length === 0) return;
-
-    const transcript = result.transcripts[0].transcript.toLowerCase().trim();
-    const confidence = result.transcripts[0].confidence || 0.5;
-
-    console.log('📝 Speech recognized:', transcript, 'Confidence:', confidence);
-
-    // Check for target keywords
-    const detectedKeyword = this.checkForKeywords(transcript);
-    
-    if (detectedKeyword && confidence >= KEYWORD_CONFIDENCE_THRESHOLD) {
-      this.recordKeywordDetection(detectedKeyword, confidence);
-    }
-  }
-
-  private checkForKeywords(transcript: string): string | null {
-    // Check English keywords
-    for (const keyword of TARGET_KEYWORDS) {
-      if (transcript.includes(keyword)) {
-        return keyword;
-      }
-    }
-    
-    // Check Hindi keywords
-    for (const keyword of HINDI_KEYWORDS) {
-      if (transcript.includes(keyword)) {
-        return keyword;
-      }
-    }
-    
-    return null;
-  }
-
-  private recordKeywordDetection(keyword: string, confidence: number) {
-    const now = Date.now();
-    
-    // Add new detection
-    this.keywordDetections.push({
-      keyword,
-      timestamp: now,
-      confidence,
-    });
-
-    // Remove old detections outside the window
-    this.keywordDetections = this.keywordDetections.filter(
-      (d) => now - d.timestamp <= DETECTION_WINDOW
-    );
-
-    console.log(`🎤 Keyword "${keyword}" detected! Count: ${this.keywordDetections.length}/${REQUIRED_DETECTIONS}`);
-
-    // Check if we have enough detections
-    if (this.keywordDetections.length >= REQUIRED_DETECTIONS) {
-      const avgConfidence = 
-        this.keywordDetections.reduce((sum, d) => sum + d.confidence, 0) / 
-        this.keywordDetections.length;
-
-      this.onDetection?.({
-        detected: true,
-        type: 'keyword',
-        confidence: avgConfidence,
-        keyword,
-        detectionCount: this.keywordDetections.length,
-      });
-
-      console.log(`🚨 KEYWORD ALERT TRIGGERED: "${keyword}" detected ${this.keywordDetections.length} times`);
-      
-      // Reset detections after triggering
-      this.keywordDetections = [];
     }
   }
 
