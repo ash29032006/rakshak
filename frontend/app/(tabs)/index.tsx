@@ -307,7 +307,108 @@ export default function Home() {
           <Text style={styles.sensitivityInfo}>{getSensitivityThreshold()}</Text>
         </View>
 
-        {/* Test Button */}
+        {/* Real-time Detection Scores (for debugging) */}
+        {protectionActive && (
+          <View style={styles.detectionScoresSection}>
+            <TouchableOpacity onPress={() => setShowDetectionScores(!showDetectionScores)} style={styles.scoresHeader}>
+              <Text style={styles.sectionTitle}>Detection Scores</Text>
+              <Ionicons name={showDetectionScores ? 'chevron-up' : 'chevron-down'} size={20} color="#F1F5F9" />
+            </TouchableOpacity>
+            
+            {showDetectionScores && (
+              <>
+                <View style={styles.scoreBar}>
+                  <Text style={styles.scoreLabel}>Voice: {Math.round(detectionState.voiceConfidence * 100)}%</Text>
+                  <View style={styles.progressBarContainer}>
+                    <View style={[styles.progressBar, styles.voiceProgress, { width: `${detectionState.voiceConfidence * 100}%` }]} />
+                  </View>
+                </View>
+                <View style={styles.scoreBar}>
+                  <Text style={styles.scoreLabel}>Gesture: {Math.round(detectionState.gestureConfidence * 100)}%</Text>
+                  <View style={styles.progressBarContainer}>
+                    <View style={[styles.progressBar, styles.gestureProgress, { width: `${detectionState.gestureConfidence * 100}%` }]} />
+                  </View>
+                </View>
+                <View style={styles.scoreBar}>
+                  <Text style={styles.scoreLabel}>Behavioral: {Math.round(detectionState.behavioralConfidence * 100)}%</Text>
+                  <View style={styles.progressBarContainer}>
+                    <View style={[styles.progressBar, styles.behavioralProgress, { width: `${detectionState.behavioralConfidence * 100}%` }]} />
+                  </View>
+                </View>
+                <View style={styles.scoreBar}>
+                  <Text style={[styles.scoreLabel, styles.fusionLabel]}>FUSION: {Math.round(detectionState.fusionScore * 100)}%</Text>
+                  <View style={styles.progressBarContainer}>
+                    <View style={[styles.progressBar, styles.fusionProgress, { width: `${detectionState.fusionScore * 100}%` }]} />
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Testing Controls (Simulate Detections) */}
+        {protectionActive && (
+          <View style={styles.testingSection}>
+            <Text style={styles.sectionTitle}>Test Detection Systems</Text>
+            <View style={styles.testButtonRow}>
+              <TouchableOpacity
+                style={[styles.testDetectionButton, styles.voiceTestButton]}
+                onPress={() => {
+                  Alert.alert('Voice Detection Test', 'Which test would you like to run?', [
+                    {
+                      text: 'Scream',
+                      onPress: () => voiceDetector.simulateKeywordDetection('scream'),
+                    },
+                    {
+                      text: 'Keyword: "help me"',
+                      onPress: () => voiceDetector.simulateKeywordDetection('help me'),
+                    },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }}
+              >
+                <Ionicons name="mic" size={16} color="#FFFFFF" />
+                <Text style={styles.testDetectionButtonText}>Voice</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.testDetectionButton, styles.gestureTestButton]}
+                onPress={() => {
+                  Alert.alert('Gesture Detection Test', 'Which gesture would you like to simulate?', [
+                    {
+                      text: 'Help (Palm→Fist)',
+                      onPress: () => gestureDetector.simulateGesture('help'),
+                    },
+                    {
+                      text: 'Wave',
+                      onPress: () => gestureDetector.simulateGesture('wave'),
+                    },
+                    {
+                      text: 'Camera Cover',
+                      onPress: () => gestureDetector.simulateGesture('cover'),
+                    },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]);
+                }}
+              >
+                <Ionicons name="hand-left" size={16} color="#FFFFFF" />
+                <Text style={styles.testDetectionButtonText}>Gesture</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.testDetectionButton, styles.behavioralTestButton]}
+                onPress={() => {
+                  Alert.alert('Behavioral Detection', 'Shake your device rapidly to test accelerometer detection!');
+                }}
+              >
+                <Ionicons name="phone-portrait" size={16} color="#FFFFFF" />
+                <Text style={styles.testDetectionButtonText}>Shake</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* Manual Test Alert */}
         <TouchableOpacity style={styles.testButton} onPress={handleTestAlert}>
           <Ionicons name="flask" size={20} color="#FFFFFF" />
           <Text style={styles.testButtonText}>Test Alert</Text>
