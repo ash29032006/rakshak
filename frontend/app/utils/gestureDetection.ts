@@ -1,8 +1,20 @@
 import { Camera } from 'expo-camera';
 
+// Gesture detection configuration - STRICT (2 gestures in 10 seconds)
+const REQUIRED_DETECTIONS = 2; // Must detect gesture 2 times
+const DETECTION_WINDOW = 10000; // Within 10 seconds
+const COOLDOWN_AFTER_DETECTION = 2000; // 2 second cooldown between gesture detections
+
 interface GestureDetectionResult {
   detected: boolean;
   gesture: 'help' | 'wave' | 'cover' | null;
+  confidence: number;
+  detectionCount?: number;
+}
+
+interface GestureDetection {
+  gesture: 'help' | 'wave' | 'cover';
+  timestamp: number;
   confidence: number;
 }
 
@@ -19,6 +31,8 @@ export class GestureDetector {
   private lastBrightness = 1;
   private brightnessBuffer: number[] = [];
   private motionVector = { x: 0, y: 0, count: 0 };
+  private gestureDetections: GestureDetection[] = []; // Track all gestures
+  private lastGestureTime = 0; // For cooldown
 
   async start(callback: (result: GestureDetectionResult) => void): Promise<boolean> {
     try {
