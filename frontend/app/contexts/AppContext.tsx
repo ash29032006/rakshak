@@ -60,6 +60,8 @@ interface AppState {
   alertState: 'idle' | 'detecting' | 'alert';
   currentAlert: Alert | null;
   detectionState: DetectionState;
+  alertCountdown: number; // Countdown timer (7 seconds)
+  pendingDetection: { type: 'voice' | 'gesture' | 'behavioral' | 'manual', confidence: number } | null;
   
   // Actions
   setUserName: (name: string) => void;
