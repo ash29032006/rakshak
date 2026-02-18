@@ -254,12 +254,12 @@ export class VoiceDetector {
   }
 
   private async analyzeAudio(currentLevel: number) {
-    // Scream detection: sustained high amplitude
+    // Enhanced scream detection with higher threshold
     const avgAmplitude = this.audioBuffer.reduce((a, b) => a + b, 0) / this.audioBuffer.length;
     
     if (avgAmplitude > SCREAM_AMPLITUDE_THRESHOLD && currentLevel > SCREAM_AMPLITUDE_THRESHOLD) {
       // High amplitude detected - likely scream
-      const confidence = Math.min(0.95, avgAmplitude * 1.1);
+      const confidence = Math.min(0.92, avgAmplitude * 1.15);
       
       this.onDetection?.({
         detected: true,
@@ -269,34 +269,49 @@ export class VoiceDetector {
       
       console.log('🚨 SCREAM DETECTED:', { amplitude: avgAmplitude, confidence });
     }
-
-    // For keyword detection, we would need speech-to-text
-    // For now, we'll use amplitude patterns as a proxy
-    // In production, integrate with expo-speech-recognition or cloud STT
   }
 
   async stop() {
     this.isListening = false;
+    this.keywordDetections = [];
     
     try {
+      // Stop speech recognition
+      if (this.isRecognizing && this.recognitionSupported) {
+        await ExpoSpeechRecognitionModule.stop();
+        ExpoSpeechRecognitionModule.removeAllListeners();
+        this.isRecognizing = false;
+      }
+
+      // Stop audio recording
       if (this.recording) {
         await this.recording.stopAndUnloadAsync();
         this.recording = null;
       }
+      
+      console.log('✅ Voice detection stopped');
     } catch (error) {
-      console.error('Failed to stop recording:', error);
+      console.error('Failed to stop voice detection:', error);
     }
   }
 
-  // Simulate keyword detection for testing
+  // Get detection count for UI display
+  getDetectionCount(): number {
+    return this.keywordDetections.length;
+  }
+
+  // Simulate keyword detection for testing (triggers immediately without multiple detections)
   simulateKeywordDetection(keyword: string) {
     if (this.isListening) {
+      // For testing, trigger immediately with high confidence
       this.onDetection?.({
         detected: true,
         type: 'keyword',
         confidence: 0.95,
         keyword,
+        detectionCount: REQUIRED_DETECTIONS, // Pretend we have enough detections
       });
+      console.log(`🧪 TEST: Simulated keyword "${keyword}"`);
     }
   }
 }
