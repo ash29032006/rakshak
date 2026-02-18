@@ -1,16 +1,30 @@
 import { Audio } from 'expo-av';
+import {
+  useSpeechRecognitionEvent,
+  ExpoSpeechRecognitionModule,
+  SpeechRecognitionErrorCode,
+} from 'expo-speech-recognition';
 
 // Voice detection configuration
-const KEYWORDS = ['help', 'help me', 'bachao', 'bacho', 'stop'];
-const SCREAM_FREQUENCY_THRESHOLD = 400; // Hz
-const SCREAM_AMPLITUDE_THRESHOLD = 0.7;
-const SCREAM_DURATION_MS = 500;
+const TARGET_KEYWORDS = ['help me', 'help'];
+const HINDI_KEYWORDS = ['bachao', 'bacho'];
+const REQUIRED_DETECTIONS = 2; // Must detect keyword 2 times
+const DETECTION_WINDOW = 10000; // Within 10 seconds
+const SCREAM_AMPLITUDE_THRESHOLD = 0.75;
+const KEYWORD_CONFIDENCE_THRESHOLD = 0.85;
 
 interface VoiceDetectionResult {
   detected: boolean;
   type: 'keyword' | 'scream' | null;
   confidence: number;
   keyword?: string;
+  detectionCount?: number;
+}
+
+interface KeywordDetection {
+  keyword: string;
+  timestamp: number;
+  confidence: number;
 }
 
 export class VoiceDetector {
@@ -19,7 +33,10 @@ export class VoiceDetector {
   private onDetection: ((result: VoiceDetectionResult) => void) | null = null;
   private audioBuffer: number[] = [];
   private lastCheckTime = 0;
-  private checkInterval = 1000; // Check every 1 second
+  private checkInterval = 500; // Check every 500ms
+  private recognitionSupported = false;
+  private keywordDetections: KeywordDetection[] = [];
+  private isRecognizing = false;
 
   async start(callback: (result: VoiceDetectionResult) => void): Promise<boolean> {
     try {
