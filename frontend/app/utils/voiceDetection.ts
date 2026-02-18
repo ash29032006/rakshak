@@ -127,108 +127,182 @@ export class VoiceDetector {
     const avgAmplitude = this.audioBuffer.reduce((a, b) => a + b, 0) / this.audioBuffer.length;
     const now = Date.now();
     
-    // Cooldown check - prevent rapid detections
-    if (now - this.lastDetectionTime < this.detectionCooldown) {
-      return; // Still in cooldown
+    // Store amplitude history for pattern analysis
+    this.recentAmplitudeHistory.push({ amplitude: currentLevel, time: now });
+    if (this.recentAmplitudeHistory.length > 30) {
+      this.recentAmplitudeHistory.shift();
     }
     
-    // Detection 1: Extreme scream only (very high threshold)
+    // Cooldown check
+    if (now - this.lastDetectionTime < this.detectionCooldown) {
+      return;
+    }
+    
+    // Detection 1: Extreme scream only
     if (avgAmplitude > SCREAM_AMPLITUDE_THRESHOLD && currentLevel > SCREAM_AMPLITUDE_THRESHOLD) {
       const confidence = Math.min(0.92, avgAmplitude * 1.15);
-      
       this.onDetection?.({
         detected: true,
         type: 'scream',
         confidence,
       });
-      
       this.lastDetectionTime = now;
-      console.log('🚨 EXTREME SCREAM DETECTED:', { amplitude: avgAmplitude, confidence });
+      console.log('🚨 EXTREME SCREAM DETECTED:', { amplitude: avgAmplitude });
       return;
     }
     
-    // Detection 2: Very specific "HELP ME" pattern
-    // Must be VERY loud (80%+) and sustained for specific duration (800-2000ms)
+    // Detection 2: "HELP ME" TWO-WORD PATTERN
+    // Looking for: HIGH amplitude -> brief dip -> HIGH amplitude again
     if (avgAmplitude > HELP_ME_AMPLITUDE_THRESHOLD && currentLevel > HELP_ME_AMPLITUDE_THRESHOLD) {
       this.consecutiveHighAmplitude++;
       
       if (this.consecutiveHighAmplitude === 1) {
         this.loudVoiceStartTime = now;
+        this.gapDetected = false;
+        this.firstWordDuration = 0;
       }
       
       const duration = now - this.loudVoiceStartTime;
       
-      // Check if it matches "HELP ME" pattern
-      if (this.consecutiveHighAmplitude >= CONSECUTIVE_SAMPLES_REQUIRED && 
-          duration >= HELP_ME_DURATION_MIN && 
-          duration <= HELP_ME_DURATION_MAX) {
+      // Check for the two-word pattern
+      if (this.consecutiveHighAmplitude >= CONSECUTIVE_SAMPLES_REQUIRED) {
+        // We have sustained loud sound - check if it matches "HELP ME" pattern
+        const hasTwoWordPattern = this.detectTwoWordPattern();
         
-        // Perfect duration and amplitude - likely "HELP ME"
-        this.recordHelpMeDetection(avgAmplitude);
-        this.consecutiveHighAmplitude = 0;
-        this.loudVoiceStartTime = 0;
-        this.lastDetectionTime = now;
-      } else if (duration > HELP_ME_DURATION_MAX) {
-        // Too long - reset
-        console.log('⏱️ Voice too long, resetting (not "HELP ME" pattern)');
-        this.consecutiveHighAmplitude = 0;
-        this.loudVoiceStartTime = 0;
+        if (hasTwoWordPattern && duration >= HELP_ME_DURATION_MIN && duration <= HELP_ME_DURATION_MAX) {
+          console.log('✅ Two-word pattern detected (likely "HELP ME")');
+          this.recordHelpMeDetection(avgAmplitude, 'two_word');
+          this.resetVoiceState();
+          this.lastDetectionTime = now;
+        } else if (duration > HELP_ME_DURATION_MAX) {
+          // Too long - single word or sentence
+          console.log('❌ Too long - not "HELP ME" pattern, resetting');
+          this.resetVoiceState();
+        }
       }
     } else {
-      // Amplitude dropped - check if it was the right duration
-      if (this.consecutiveHighAmplitude > 0) {
+      // Amplitude dropped - check if we completed a valid pattern
+      if (this.consecutiveHighAmplitude >= CONSECUTIVE_SAMPLES_REQUIRED) {
         const duration = now - this.loudVoiceStartTime;
         
-        if (this.consecutiveHighAmplitude >= CONSECUTIVE_SAMPLES_REQUIRED && 
-            duration >= HELP_ME_DURATION_MIN) {
-          // Valid "HELP ME" detection
-          const avgAmp = this.audioBuffer.slice(-this.consecutiveHighAmplitude)
-            .reduce((a, b) => a + b, 0) / this.consecutiveHighAmplitude;
-          this.recordHelpMeDetection(avgAmp);
-          this.lastDetectionTime = now;
+        if (duration >= HELP_ME_DURATION_MIN && duration <= HELP_ME_DURATION_MAX) {
+          const hasTwoWordPattern = this.detectTwoWordPattern();
+          
+          if (hasTwoWordPattern) {
+            console.log('✅ Complete "HELP ME" pattern detected');
+            const avgAmp = this.audioBuffer.slice(-this.consecutiveHighAmplitude)
+              .reduce((a, b) => a + b, 0) / this.consecutiveHighAmplitude;
+            this.recordHelpMeDetection(avgAmp, 'two_word');
+            this.lastDetectionTime = now;
+          } else {
+            console.log('❌ Single word detected - not "HELP ME", ignoring');
+          }
         }
-        
-        this.consecutiveHighAmplitude = 0;
-        this.loudVoiceStartTime = 0;
       }
+      
+      this.resetVoiceState();
     }
   }
 
-  private recordHelpMeDetection(amplitude: number) {
-    const now = Date.now();
-    const confidence = Math.min(0.92, amplitude * 1.2);
+  // Detect two-word pattern (HELP + ME) by analyzing amplitude history
+  private detectTwoWordPattern(): boolean {
+    if (this.recentAmplitudeHistory.length < 15) return false;
     
-    // Add new detection
+    // Look for pattern: HIGH -> DIP -> HIGH
+    // This matches "HELP" (pause) "ME"
+    const recent = this.recentAmplitudeHistory.slice(-20);
+    let foundGap = false;
+    let firstWordEnd = -1;
+    let secondWordStart = -1;
+    
+    // Find a gap (amplitude drop) in the middle
+    for (let i = 3; i < recent.length - 3; i++) {
+      const current = recent[i].amplitude;
+      const before = (recent[i-1].amplitude + recent[i-2].amplitude + recent[i-3].amplitude) / 3;
+      const after = (recent[i+1].amplitude + recent[i+2].amplitude + recent[i+3].amplitude) / 3;
+      
+      // Check if there's a dip between two high points
+      if (before > HELP_ME_AMPLITUDE_THRESHOLD * 0.9 && 
+          after > HELP_ME_AMPLITUDE_THRESHOLD * 0.9 && 
+          current < HELP_ME_AMPLITUDE_THRESHOLD * 0.7) {
+        
+        const gapDuration = recent[i+3].time - recent[i-3].time;
+        
+        // Check if gap duration matches "HELP" (pause) "ME"
+        if (gapDuration >= TWO_WORD_GAP_MIN && gapDuration <= TWO_WORD_GAP_MAX) {
+          foundGap = true;
+          firstWordEnd = i;
+          secondWordStart = i + 3;
+          console.log('🎯 Two-word gap detected:', { gapDuration, position: i });
+          break;
+        }
+      }
+    }
+    
+    // Must have found a gap to be "HELP ME"
+    if (!foundGap) {
+      console.log('❌ No word gap found - single word or continuous sound');
+      return false;
+    }
+    
+    // Verify second word duration (should be "ME" - shorter than "HELP")
+    if (secondWordStart > 0) {
+      const secondWordSamples = recent.slice(secondWordStart);
+      const secondWordHighSamples = secondWordSamples.filter(s => s.amplitude > HELP_ME_AMPLITUDE_THRESHOLD * 0.85);
+      
+      if (secondWordHighSamples.length < 3) {
+        console.log('❌ Second word too short - not "HELP ME"');
+        return false;
+      }
+    }
+    
+    console.log('✅ Pattern matches "HELP ME" (two words with gap)');
+    return true;
+  }
+
+  private resetVoiceState() {
+    this.consecutiveHighAmplitude = 0;
+    this.loudVoiceStartTime = 0;
+    this.gapDetected = false;
+    this.firstWordDuration = 0;
+  }
+
+  private recordHelpMeDetection(amplitude: number, pattern: 'two_word' | 'sustained') {
+    const now = Date.now();
+    const confidence = Math.min(0.93, amplitude * 1.25);
+    
     this.keywordDetections.push({
       keyword: 'HELP ME',
       timestamp: now,
       confidence,
+      pattern,
     });
 
-    // Remove old detections outside the window
+    // Remove old detections
     this.keywordDetections = this.keywordDetections.filter(
       (d) => now - d.timestamp <= DETECTION_WINDOW
     );
 
-    console.log(`🎤 "HELP ME" pattern detected! Count: ${this.keywordDetections.length}/${REQUIRED_DETECTIONS}`);
+    // Filter to only count two-word patterns
+    const twoWordDetections = this.keywordDetections.filter(d => d.pattern === 'two_word');
 
-    // Check if we have enough detections
-    if (this.keywordDetections.length >= REQUIRED_DETECTIONS) {
+    console.log(`🎤 "HELP ME" detected! Two-word count: ${twoWordDetections.length}/${REQUIRED_DETECTIONS}`);
+
+    // Only trigger if we have 2 two-word pattern detections
+    if (twoWordDetections.length >= REQUIRED_DETECTIONS) {
       const avgConfidence = 
-        this.keywordDetections.reduce((sum, d) => sum + d.confidence, 0) / 
-        this.keywordDetections.length;
+        twoWordDetections.reduce((sum, d) => sum + d.confidence, 0) / 
+        twoWordDetections.length;
 
       this.onDetection?.({
         detected: true,
         type: 'loud_voice',
         confidence: avgConfidence,
         keyword: 'HELP ME',
-        detectionCount: this.keywordDetections.length,
+        detectionCount: twoWordDetections.length,
       });
 
-      console.log(`🚨 ALERT: "HELP ME" detected ${this.keywordDetections.length} times!`);
-      
-      // Reset detections after triggering
+      console.log(`🚨 ALERT: "HELP ME" (2-word pattern) detected ${twoWordDetections.length} times!`);
       this.keywordDetections = [];
     }
   }
