@@ -119,7 +119,12 @@ export class VoiceDetector {
     const avgAmplitude = this.audioBuffer.reduce((a, b) => a + b, 0) / this.audioBuffer.length;
     const now = Date.now();
     
-    // Detection 1: Scream (very high amplitude, instant)
+    // Cooldown check - prevent rapid detections
+    if (now - this.lastDetectionTime < this.detectionCooldown) {
+      return; // Still in cooldown
+    }
+    
+    // Detection 1: Extreme scream only (very high threshold)
     if (avgAmplitude > SCREAM_AMPLITUDE_THRESHOLD && currentLevel > SCREAM_AMPLITUDE_THRESHOLD) {
       const confidence = Math.min(0.92, avgAmplitude * 1.15);
       
@@ -129,41 +134,65 @@ export class VoiceDetector {
         confidence,
       });
       
-      console.log('🚨 SCREAM DETECTED:', { amplitude: avgAmplitude, confidence });
-      return; // Don't check other patterns if scream detected
+      this.lastDetectionTime = now;
+      console.log('🚨 EXTREME SCREAM DETECTED:', { amplitude: avgAmplitude, confidence });
+      return;
     }
     
-    // Detection 2: Sustained loud voice (simulates "help me" being said multiple times)
-    // High amplitude sustained for period = likely calling for help
-    if (avgAmplitude > HIGH_AMPLITUDE_THRESHOLD) {
+    // Detection 2: Very specific "HELP ME" pattern
+    // Must be VERY loud (80%+) and sustained for specific duration (800-2000ms)
+    if (avgAmplitude > HELP_ME_AMPLITUDE_THRESHOLD && currentLevel > HELP_ME_AMPLITUDE_THRESHOLD) {
       this.consecutiveHighAmplitude++;
       
       if (this.consecutiveHighAmplitude === 1) {
         this.loudVoiceStartTime = now;
       }
       
-      // If sustained for 1+ second, record as potential "help me" detection
       const duration = now - this.loudVoiceStartTime;
-      if (duration >= 1000 && this.consecutiveHighAmplitude >= 5) { // 5 consecutive samples at high amplitude
-        this.recordLoudVoiceDetection(avgAmplitude);
-        this.consecutiveHighAmplitude = 0; // Reset after recording
+      
+      // Check if it matches "HELP ME" pattern
+      if (this.consecutiveHighAmplitude >= CONSECUTIVE_SAMPLES_REQUIRED && 
+          duration >= HELP_ME_DURATION_MIN && 
+          duration <= HELP_ME_DURATION_MAX) {
+        
+        // Perfect duration and amplitude - likely "HELP ME"
+        this.recordHelpMeDetection(avgAmplitude);
+        this.consecutiveHighAmplitude = 0;
+        this.loudVoiceStartTime = 0;
+        this.lastDetectionTime = now;
+      } else if (duration > HELP_ME_DURATION_MAX) {
+        // Too long - reset
+        console.log('⏱️ Voice too long, resetting (not "HELP ME" pattern)');
+        this.consecutiveHighAmplitude = 0;
+        this.loudVoiceStartTime = 0;
       }
     } else {
-      // Reset if amplitude drops
+      // Amplitude dropped - check if it was the right duration
       if (this.consecutiveHighAmplitude > 0) {
+        const duration = now - this.loudVoiceStartTime;
+        
+        if (this.consecutiveHighAmplitude >= CONSECUTIVE_SAMPLES_REQUIRED && 
+            duration >= HELP_ME_DURATION_MIN) {
+          // Valid "HELP ME" detection
+          const avgAmp = this.audioBuffer.slice(-this.consecutiveHighAmplitude)
+            .reduce((a, b) => a + b, 0) / this.consecutiveHighAmplitude;
+          this.recordHelpMeDetection(avgAmp);
+          this.lastDetectionTime = now;
+        }
+        
         this.consecutiveHighAmplitude = 0;
         this.loudVoiceStartTime = 0;
       }
     }
   }
 
-  private recordLoudVoiceDetection(amplitude: number) {
+  private recordHelpMeDetection(amplitude: number) {
     const now = Date.now();
-    const confidence = Math.min(0.90, amplitude * 1.2);
+    const confidence = Math.min(0.92, amplitude * 1.2);
     
-    // Add new detection (simulates saying "help me")
+    // Add new detection
     this.keywordDetections.push({
-      keyword: 'loud_voice',
+      keyword: 'HELP ME',
       timestamp: now,
       confidence,
     });
@@ -173,7 +202,7 @@ export class VoiceDetector {
       (d) => now - d.timestamp <= DETECTION_WINDOW
     );
 
-    console.log(`🎤 Loud voice detected! Count: ${this.keywordDetections.length}/${REQUIRED_DETECTIONS} (simulating "help me")`);
+    console.log(`🎤 "HELP ME" pattern detected! Count: ${this.keywordDetections.length}/${REQUIRED_DETECTIONS}`);
 
     // Check if we have enough detections
     if (this.keywordDetections.length >= REQUIRED_DETECTIONS) {
@@ -185,11 +214,11 @@ export class VoiceDetector {
         detected: true,
         type: 'loud_voice',
         confidence: avgConfidence,
-        keyword: 'help me (voice pattern)',
+        keyword: 'HELP ME',
         detectionCount: this.keywordDetections.length,
       });
 
-      console.log(`🚨 SUSTAINED LOUD VOICE ALERT: Detected ${this.keywordDetections.length} times (simulating "help me" keyword)`);
+      console.log(`🚨 ALERT: "HELP ME" detected ${this.keywordDetections.length} times!`);
       
       // Reset detections after triggering
       this.keywordDetections = [];
@@ -202,15 +231,18 @@ export class VoiceDetector {
     this.consecutiveHighAmplitude = 0;
     
     try {
-      // Stop audio recording
       if (this.recording) {
-        await this.recording.stopAndUnloadAsync();
+        const status = await this.recording.getStatusAsync();
+        if (status.isRecording) {
+          await this.recording.stopAndUnloadAsync();
+        }
         this.recording = null;
       }
-      
       console.log('✅ Voice detection stopped');
     } catch (error) {
-      console.error('Failed to stop voice detection:', error);
+      // Silently handle recorder errors
+      console.log('ℹ️ Voice detection stopped (recorder already released)');
+      this.recording = null;
     }
   }
 
@@ -219,16 +251,15 @@ export class VoiceDetector {
     return this.keywordDetections.length;
   }
 
-  // Simulate keyword detection for testing (triggers immediately without multiple detections)
+  // Simulate keyword detection for testing
   simulateKeywordDetection(keyword: string) {
     if (this.isListening) {
-      // For testing, trigger immediately with high confidence
       this.onDetection?.({
         detected: true,
         type: 'keyword',
-        confidence: KEYWORD_CONFIDENCE,
+        confidence: 0.95,
         keyword,
-        detectionCount: REQUIRED_DETECTIONS, // Pretend we have enough detections
+        detectionCount: REQUIRED_DETECTIONS,
       });
       console.log(`🧪 TEST: Simulated keyword "${keyword}"`);
     }
