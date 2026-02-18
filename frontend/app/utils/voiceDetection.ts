@@ -114,11 +114,11 @@ export class VoiceDetector {
   }
 
   private async analyzeAudio(currentLevel: number) {
-    // Enhanced scream detection with higher threshold
     const avgAmplitude = this.audioBuffer.reduce((a, b) => a + b, 0) / this.audioBuffer.length;
+    const now = Date.now();
     
+    // Detection 1: Scream (very high amplitude, instant)
     if (avgAmplitude > SCREAM_AMPLITUDE_THRESHOLD && currentLevel > SCREAM_AMPLITUDE_THRESHOLD) {
-      // High amplitude detected - likely scream
       const confidence = Math.min(0.92, avgAmplitude * 1.15);
       
       this.onDetection?.({
@@ -128,21 +128,78 @@ export class VoiceDetector {
       });
       
       console.log('🚨 SCREAM DETECTED:', { amplitude: avgAmplitude, confidence });
+      return; // Don't check other patterns if scream detected
+    }
+    
+    // Detection 2: Sustained loud voice (simulates "help me" being said multiple times)
+    // High amplitude sustained for period = likely calling for help
+    if (avgAmplitude > HIGH_AMPLITUDE_THRESHOLD) {
+      this.consecutiveHighAmplitude++;
+      
+      if (this.consecutiveHighAmplitude === 1) {
+        this.loudVoiceStartTime = now;
+      }
+      
+      // If sustained for 1+ second, record as potential "help me" detection
+      const duration = now - this.loudVoiceStartTime;
+      if (duration >= 1000 && this.consecutiveHighAmplitude >= 5) { // 5 consecutive samples at high amplitude
+        this.recordLoudVoiceDetection(avgAmplitude);
+        this.consecutiveHighAmplitude = 0; // Reset after recording
+      }
+    } else {
+      // Reset if amplitude drops
+      if (this.consecutiveHighAmplitude > 0) {
+        this.consecutiveHighAmplitude = 0;
+        this.loudVoiceStartTime = 0;
+      }
+    }
+  }
+
+  private recordLoudVoiceDetection(amplitude: number) {
+    const now = Date.now();
+    const confidence = Math.min(0.90, amplitude * 1.2);
+    
+    // Add new detection (simulates saying "help me")
+    this.keywordDetections.push({
+      keyword: 'loud_voice',
+      timestamp: now,
+      confidence,
+    });
+
+    // Remove old detections outside the window
+    this.keywordDetections = this.keywordDetections.filter(
+      (d) => now - d.timestamp <= DETECTION_WINDOW
+    );
+
+    console.log(`🎤 Loud voice detected! Count: ${this.keywordDetections.length}/${REQUIRED_DETECTIONS} (simulating "help me")`);
+
+    // Check if we have enough detections
+    if (this.keywordDetections.length >= REQUIRED_DETECTIONS) {
+      const avgConfidence = 
+        this.keywordDetections.reduce((sum, d) => sum + d.confidence, 0) / 
+        this.keywordDetections.length;
+
+      this.onDetection?.({
+        detected: true,
+        type: 'loud_voice',
+        confidence: avgConfidence,
+        keyword: 'help me (voice pattern)',
+        detectionCount: this.keywordDetections.length,
+      });
+
+      console.log(`🚨 SUSTAINED LOUD VOICE ALERT: Detected ${this.keywordDetections.length} times (simulating "help me" keyword)`);
+      
+      // Reset detections after triggering
+      this.keywordDetections = [];
     }
   }
 
   async stop() {
     this.isListening = false;
     this.keywordDetections = [];
+    this.consecutiveHighAmplitude = 0;
     
     try {
-      // Stop speech recognition
-      if (this.isRecognizing && this.recognitionSupported) {
-        await ExpoSpeechRecognitionModule.stop();
-        ExpoSpeechRecognitionModule.removeAllListeners();
-        this.isRecognizing = false;
-      }
-
       // Stop audio recording
       if (this.recording) {
         await this.recording.stopAndUnloadAsync();
@@ -167,7 +224,7 @@ export class VoiceDetector {
       this.onDetection?.({
         detected: true,
         type: 'keyword',
-        confidence: 0.95,
+        confidence: KEYWORD_CONFIDENCE,
         keyword,
         detectionCount: REQUIRED_DETECTIONS, // Pretend we have enough detections
       });
