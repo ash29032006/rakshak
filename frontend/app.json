@@ -9,14 +9,28 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Detect emergency hand gestures for your safety",
+        "NSMicrophoneUsageDescription": "Detect distress keywords and screams",
+        "NSLocationWhenInUseUsageDescription": "Share your location in emergencies",
+        "NSLocationAlwaysUsageDescription": "Track your location during alerts"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "SEND_SMS",
+        "VIBRATE"
+      ]
     },
     "web": {
       "bundler": "metro",
