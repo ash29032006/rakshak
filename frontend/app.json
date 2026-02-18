@@ -14,7 +14,8 @@
         "NSCameraUsageDescription": "Detect emergency hand gestures for your safety",
         "NSMicrophoneUsageDescription": "Detect distress keywords and screams",
         "NSLocationWhenInUseUsageDescription": "Share your location in emergencies",
-        "NSLocationAlwaysUsageDescription": "Track your location during alerts"
+        "NSLocationAlwaysUsageDescription": "Track your location during alerts",
+        "NSSpeechRecognitionUsageDescription": "Recognize distress keywords for your safety"
       }
     },
     "android": {
