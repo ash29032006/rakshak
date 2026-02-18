@@ -124,25 +124,9 @@ export class GestureDetector {
       return;
     }
     
-    const handDetected = Math.random() > 0.7;
-    const isPalmOpen = Math.random() > 0.5;
-    
-    if (this.gestureState === 'waiting' && handDetected && isPalmOpen) {
-      this.gestureState = 'palm_detected';
-      this.palmDetectedTime = now;
-      console.log('✋ Palm detected - waiting for fist...');
-    } else if (this.gestureState === 'palm_detected') {
-      const elapsed = now - this.palmDetectedTime;
-      
-      if (elapsed > 2000) {
-        this.gestureState = 'waiting';
-        console.log('⏱️ Palm gesture timeout');
-      } else if (handDetected && !isPalmOpen) {
-        // Fist detected - record!
-        this.recordGestureDetection('help', 0.95, now);
-        this.gestureState = 'waiting';
-      }
-    }
+    // DISABLED: Random simulation causes false positives
+    // In production, use actual hand landmark detection (MediaPipe/TensorFlow)
+    return; // Temporarily disabled until real hand tracking is integrated
   }
 
   private async detectWave(frameData: any, now: number) {
@@ -151,34 +135,10 @@ export class GestureDetector {
       return;
     }
     
-    const handX = Math.random() * 100;
-    
-    if (this.gestureState === 'tracking_wave' || this.waveStartTime === 0) {
-      if (this.waveStartTime === 0) {
-        this.waveStartTime = now;
-        this.waveCount = 0;
-        this.motionVector = { x: handX, y: 0, count: 0 };
-      }
-      
-      const deltaX = handX - this.motionVector.x;
-      if (Math.abs(deltaX) > 15) {
-        this.waveCount++;
-        this.motionVector.x = handX;
-        console.log(`👋 Wave count: ${this.waveCount}`);
-      }
-      
-      const elapsed = now - this.waveStartTime;
-      
-      if (elapsed > 1000) {
-        if (this.waveCount >= 4) {
-          // 4+ waves detected - record!
-          this.recordGestureDetection('wave', 0.85, now);
-        }
-        
-        this.waveStartTime = 0;
-        this.waveCount = 0;
-      }
-    }
+    // DISABLED: Random simulation causes too many false positives
+    // Wave gesture requires actual hand tracking to work reliably
+    // In production, use MediaPipe Hands or TensorFlow to track wrist position
+    return; // Disabled until real hand tracking is integrated
   }
 
   // Record gesture detection and check if we have enough
