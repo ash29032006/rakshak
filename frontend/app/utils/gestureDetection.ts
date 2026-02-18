@@ -219,16 +219,19 @@ export class GestureDetector {
     this.lastGestureTime = now;
   }
 
-  // Manual trigger for testing
+  // Manual trigger for testing - now triggers immediately
   simulateGesture(gesture: 'help' | 'wave' | 'cover') {
     if (this.isWatching) {
       const confidenceMap = { help: 0.95, wave: 0.85, cover: 0.90 };
       
+      // For testing, trigger immediately with required count
       this.onDetection?.({
         detected: true,
         gesture,
         confidence: confidenceMap[gesture],
+        detectionCount: REQUIRED_DETECTIONS, // Pretend we have enough
       });
+      console.log(`🧪 TEST: Simulated gesture "${gesture}"`);
     }
   }
 
@@ -236,11 +239,16 @@ export class GestureDetector {
     this.isWatching = false;
     this.gestureState = 'waiting';
     this.frameBuffer = [];
+    this.gestureDetections = [];
     console.log('🛑 Gesture detection stopped');
   }
 
   getState() {
     return this.gestureState;
+  }
+
+  getDetectionCount(): number {
+    return this.gestureDetections.length;
   }
 }
 
