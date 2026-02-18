@@ -200,6 +200,9 @@ export default function Home() {
 
   return (
     <View style={styles.container}>
+      {/* Detection Manager - Headless component that runs detections */}
+      <DetectionManager />
+      
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
