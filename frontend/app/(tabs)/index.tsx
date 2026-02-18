@@ -7,10 +7,14 @@ import {
   ScrollView,
   Animated,
   Easing,
+  Alert,
 } from 'react-native';
 import { useApp } from '../contexts/AppContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import DetectionManager from '../components/DetectionManager';
+import { voiceDetector } from '../utils/voiceDetection';
+import { gestureDetector } from '../utils/gestureDetection';
 
 export default function Home() {
   const {
