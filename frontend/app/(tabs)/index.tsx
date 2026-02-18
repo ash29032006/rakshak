@@ -30,10 +30,12 @@ export default function Home() {
     voiceDetectionEnabled,
     gestureDetectionEnabled,
     behavioralDetectionEnabled,
+    detectionState,
   } = useApp();
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [countdown, setCountdown] = React.useState(5);
+  const [showDetectionScores, setShowDetectionScores] = React.useState(false);
 
   // Shield breathing animation
   useEffect(() => {
