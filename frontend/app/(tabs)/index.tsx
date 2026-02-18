@@ -583,6 +583,89 @@ const styles = StyleSheet.create({
   bottomSpacer: {
     height: 20,
   },
+  // Detection Scores Styles
+  detectionScoresSection: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    marginHorizontal: 24,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  scoresHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  scoreBar: {
+    marginTop: 12,
+  },
+  scoreLabel: {
+    fontSize: 13,
+    color: '#F1F5F9',
+    marginBottom: 6,
+    fontWeight: '500',
+  },
+  fusionLabel: {
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  progressBarContainer: {
+    height: 8,
+    backgroundColor: '#0F172A',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 4,
+  },
+  voiceProgress: {
+    backgroundColor: '#10B981',
+  },
+  gestureProgress: {
+    backgroundColor: '#8B5CF6',
+  },
+  behavioralProgress: {
+    backgroundColor: '#3B82F6',
+  },
+  fusionProgress: {
+    backgroundColor: '#F59E0B',
+  },
+  // Testing Section Styles
+  testingSection: {
+    paddingHorizontal: 24,
+    marginBottom: 16,
+  },
+  testButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  testDetectionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    padding: 12,
+    marginHorizontal: 4,
+  },
+  voiceTestButton: {
+    backgroundColor: '#10B981',
+  },
+  gestureTestButton: {
+    backgroundColor: '#8B5CF6',
+  },
+  behavioralTestButton: {
+    backgroundColor: '#3B82F6',
+  },
+  testDetectionButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginLeft: 6,
+  },
   // Alert Overlay Styles
   alertOverlay: {
     flex: 1,
