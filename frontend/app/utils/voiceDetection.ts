@@ -1,13 +1,16 @@
 import { Audio } from 'expo-av';
 
-// Voice detection configuration - VERY STRICT
+// Voice detection configuration - EXTREMELY STRICT FOR "HELP ME" PATTERN
 const REQUIRED_DETECTIONS = 2; // Must detect 2 times
 const DETECTION_WINDOW = 10000; // Within 10 seconds
-const SCREAM_AMPLITUDE_THRESHOLD = 0.85; // Very high - only extreme screams
-const HELP_ME_AMPLITUDE_THRESHOLD = 0.80; // Very loud sustained voice only
-const HELP_ME_DURATION_MIN = 800; // Must sustain for at least 800ms (saying "help me")
-const HELP_ME_DURATION_MAX = 2000; // But not more than 2 seconds
-const CONSECUTIVE_SAMPLES_REQUIRED = 8; // Need 8 consecutive high samples (800ms)
+const SCREAM_AMPLITUDE_THRESHOLD = 0.88; // Extreme screams only
+const HELP_ME_AMPLITUDE_THRESHOLD = 0.83; // Very loud "HELP ME" only
+const HELP_ME_DURATION_MIN = 1000; // "HELP ME" takes ~1 second minimum
+const HELP_ME_DURATION_MAX = 1800; // But not more than 1.8 seconds (too long = not "help me")
+const CONSECUTIVE_SAMPLES_REQUIRED = 10; // Need 10 consecutive high samples (1 second)
+const TWO_WORD_GAP_MIN = 150; // Brief gap between "HELP" and "ME" (150-400ms)
+const TWO_WORD_GAP_MAX = 400;
+const SECOND_WORD_DURATION_MIN = 300; // "ME" duration minimum
 
 interface VoiceDetectionResult {
   detected: boolean;
@@ -21,6 +24,7 @@ interface KeywordDetection {
   keyword: string;
   timestamp: number;
   confidence: number;
+  pattern: 'two_word' | 'sustained'; // Track if it matched "HELP ME" pattern
 }
 
 export class VoiceDetector {
@@ -34,7 +38,11 @@ export class VoiceDetector {
   private loudVoiceStartTime = 0;
   private consecutiveHighAmplitude = 0;
   private lastDetectionTime = 0;
-  private detectionCooldown = 3000; // 3 second cooldown between detections
+  private detectionCooldown = 4000; // 4 second cooldown
+  private recentAmplitudeHistory: Array<{amplitude: number, time: number}> = []; // Track amplitude over time
+  private gapDetected = false;
+  private gapStartTime = 0;
+  private firstWordDuration = 0;
 
   async start(callback: (result: VoiceDetectionResult) => void): Promise<boolean> {
     try {
