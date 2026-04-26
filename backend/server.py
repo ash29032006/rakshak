@@ -146,6 +146,12 @@ async def resolve_alert(alert_id: str):
 # Include the router in the main app
 app.include_router(api_router)
 
+# Serve the gesture detection HTML
+from fastapi.responses import FileResponse
+@app.get("/gesture_view")
+async def get_gesture_view():
+    return FileResponse(ROOT_DIR / "gesture.html")
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,

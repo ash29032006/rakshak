@@ -10,7 +10,7 @@ import sys
 from datetime import datetime, timezone
 
 # Backend URL from environment
-BACKEND_URL = "https://distress-detect-3.preview.emergentagent.com/api"
+BACKEND_URL = "http://localhost:8001/api"
 
 class RAKSHAKAPITester:
     def __init__(self):

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Gesture Detection</title>
+  <style>
+    body { margin: 0; background: black; overflow: hidden; }
+    video { width: 100vw; height: 100vh; object-fit: cover; transform: scaleX(-1); } /* Mirror */
+    #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 5px; font-family: monospace; }
+  </style>
+  <!-- Load MediaPipe Tasks Vision -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js" crossorigin="anonymous"></script>
+</head>
+<body>
+  <div id="status">Loading...</div>
+  <video id="webcam" autoplay playsinline></video>
+
+  <script type="module">
+    const video = document.getElementById('webcam');
+    const statusDiv = document.getElementById('status');
+    let handLandmarker = undefined;
+    let runningMode = "VIDEO";
+    let lastVideoTime = -1;
+    let results = undefined;
+    
+    // Wave Detection Variables
+    const WAVE_HISTORY_SIZE = 30; // 30 frames
+    const waveHistory = [];
+    let wavePeakCount = 0;
+    let waveDirection = 0; // 0: none, 1: right, -1: left
+    let lastWaveTime = 0;
+
+    // Fist Detection Variables
+    let fistStartTime = 0;
+    let isFistDetected = false;
+
+    // Initialize MediaPipe HandLandmarker
+    async function createHandLandmarker() {
+      const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+      );
+      handLandmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: `https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task`,
+          delegate: "GPU"
+        },
+        runningMode: runningMode,
+        numHands: 1
+      });
+      statusDiv.innerText = "Model Loaded";
+      enableCam();
+    }
+
+    // Enable Webcam
+    function enableCam() {
+      if (!handLandmarker) {
+        console.log("Wait! handLandmarker not loaded yet.");
+        return;
+      }
+
+      const constraints = {
+        video: {
+          facingMode: "user",
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      };
+
+      navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+        video.srcObject = stream;
+        video.addEventListener("loadeddata", predictWebcam);
+        statusDiv.innerText = "Camera Active";
+      }).catch(err => {
+        statusDiv.innerText = "Camera Error: " + err.message;
+        sendMessage('error', err.message);
+      });
+    }
+
+    // Main Prediction Loop
+    async function predictWebcam() {
+      if (lastVideoTime !== video.currentTime) {
+        lastVideoTime = video.currentTime;
+        results = handLandmarker.detectForVideo(video, performance.now());
+      }
+      
+      if (results.landmarks && results.landmarks.length > 0) {
+        const landmarks = results.landmarks[0];
+        detectGestures(landmarks);
+      } else {
+        // Reset if no hand
+        waveHistory.length = 0;
+        isFistDetected = false;
+        fistStartTime = 0;
+      }
+
+      window.requestAnimationFrame(predictWebcam);
+    }
+
+    // Gesture Logic
+    function detectGestures(landmarks) {
+      if (!landmarks) return;
+
+      const now = Date.now();
+      
+      // --- FIST DETECTION ---
+      // Check if fingers are curled
+      // Compare tip to PIP joint (assuming hand is upright)
+      // Indices: Index(8), Middle(12), Ring(16), Pinky(20)
+      // TIPS: 8, 12, 16, 20
+      // MCP (Base): 5, 9, 13, 17
+      // WRIST: 0
+      
+      // Simple logic: Is distance from Tip to Wrist small?
+      const wrist = landmarks[0];
+      const tips = [8, 12, 16, 20];
+      let curledFingers = 0;
+      
+      for (const tipIdx of tips) {
+        const tip = landmarks[tipIdx];
+        const mcp = landmarks[tipIdx - 3]; // Metacarpophalangeal joint
+        
+        // Euclidean distance check can be robust, but simple Y-check works if hand is upright
+        // Better: Check if Tip is closer to Wrist than MCP is
+        const distTipWrist = Math.hypot(tip.x - wrist.x, tip.y - wrist.y);
+        const distMcpWrist = Math.hypot(mcp.x - wrist.x, mcp.y - wrist.y);
+        
+        if (distTipWrist < distMcpWrist) { // Tip is closer to wrist -> curled
+          curledFingers++;
+        }
+      }
+
+      // Check Thumb (Tip 4, IP 3, MCP 2)
+      // Thumb is tricky, usually check x-distance relative to palm center?
+      // For simplicity, if 4 fingers are curled, it's a fist
+      if (curledFingers >= 4) {
+         if (!isFistDetected) {
+            fistStartTime = now;
+            isFistDetected = true;
+         } else if (now - fistStartTime > 500) { // Hold for 500ms
+            if (now - lastWaveTime > 2000) { // Cooldown
+                statusDiv.innerText = "Gesture: HELP (Fist)";
+                sendMessage('gesture', { type: 'help', confidence: 0.95 });
+                lastWaveTime = now; // Share cooldown
+            }
+         }
+      } else {
+         isFistDetected = false;
+         fistStartTime = 0;
+      }
+
+      // --- WAVE DETECTION ---
+      // Track wrist X position
+      waveHistory.push({ x: wrist.x, time: now });
+      if (waveHistory.length > WAVE_HISTORY_SIZE) waveHistory.shift();
+
+      if (waveHistory.length >= 5) {
+        // Calculate velocity (x change)
+        const oldest = waveHistory[0];
+        const newest = waveHistory[waveHistory.length - 1];
+        const velocity = (newest.x - oldest.x) / (newest.time - oldest.time);
+        
+        // Define movement threshold
+        const MOVE_THRESHOLD = 0.0005; // Tunable
+        
+        let newDirection = 0;
+        if (velocity > MOVE_THRESHOLD) newDirection = 1; // Right
+        else if (velocity < -MOVE_THRESHOLD) newDirection = -1; // Left
+        
+        if (newDirection !== 0 && newDirection !== waveDirection) {
+           // Direction changed (reversal)
+           if (waveDirection !== 0) { // Ignore initial start
+              wavePeakCount++;
+              // Reset if too slow
+              if (now - lastWaveTime > 1000) {
+                 wavePeakCount = 1; 
+              }
+              lastWaveTime = now;
+           }
+           waveDirection = newDirection;
+        }
+        
+        // If we hit 3 peaks (reversals) quickly
+        if (wavePeakCount >= 3) {
+           statusDiv.innerText = "Gesture: WAVE";
+           sendMessage('gesture', { type: 'wave', confidence: 0.85 });
+           wavePeakCount = 0; // Reset
+        }
+      }
+    }
+
+    function sendMessage(type, data) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type, data }));
+      }
+    }
+
+    createHandLandmarker();
+  </script>
+</body>
+</html>
