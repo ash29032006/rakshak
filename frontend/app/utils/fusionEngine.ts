@@ -1,4 +1,10 @@
-// Fusion Engine: Combines all detection methods
+/**
+ * Fusion Engine
+ * 
+ * Orchestrates multi-modal distress detection by combining weighted scores 
+ * from Voice, Gesture, and Behavioral modules. Implements a tiered 
+ * sensitivity system and contextual adjustments (e.g., night-time bias).
+ */
 
 export interface FusionResult {
   shouldTrigger: boolean;
